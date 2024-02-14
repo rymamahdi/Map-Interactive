@@ -1,0 +1,99 @@
+---
+title: "Étude sur la COVID19 au USA"
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: columns
+    vertical_layout: fill
+---
+
+```{r setup, include=FALSE}
+library(flexdashboard)
+library(tidyverse)
+library(sf)
+library(tmap)
+library(viridis)
+library(leaflet)
+library(mapview)
+library(shiny)
+library(lubridate)
+library(ggthemes)
+library(gt)
+```
+
+```{r,base de donnee et filtrage}
+Url1<- "https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_daily_reports/12-04-2022.csv?fbclid=IwAR09GEw01xQ5yf_1CsDJ8Rq2qJ04scNHFW70jR1BeZRTXmnZLy6hbCiWVy8"
+covidData <- read.csv(Url1,h=T)
+UsaCovid<- covidData %>% 
+  filter(Country_Region =="US") %>% 
+  select(Province_State,Deaths, Confirmed) %>% 
+  group_by(Province_State) %>% 
+  summarise(Deaths=sum(Deaths),
+            Confirmed=sum(Confirmed))
+```
+
+```{r,Import du fond de carte et coordination avec la database,include=FALSE}
+# Ce fichier a été preablement télécharger sur shapefile "http://www.diva-gis.org/datadown"
+USA <- st_read("/Users/rymamahdi/Downloads/USA_adm/USA_adm1.shp", layer = "USA_adm1")
+USA$id<-USA$NAME_1
+USA <- USA[c(11,10)]
+USAMapCovid <- inner_join(USA,UsaCovid, by=c("id"="Province_State"))
+
+```
+
+
+Column {,tabset .tabset-fade data-width=650}
+-----------------------------------------------------------------------
+
+### Carte des cas confirmés de la covid19 aux USA 
+
+```{r,Carte des confirmés due a la covid19 aux USA,eval=TRUE,echo=FALSE}
+
+breaks = c(0,100000,1000000,2000000,4000000,6000000,10000000,12000000)
+
+tm_shape(USAMapCovid) +tm_basemap("Stamen.Watercolor")+
+  tm_polygons("Confirmed",breaks=breaks, title = "Nbr de Cas COVID19") +
+   tmap_mode("view") 
+```
+
+Column {,tabset .tabset-fade data-width=350}
+-----------------------------------------------------------------------
+
+### Évolution des nombre de cas confirmé au USA
+
+```{r, Faire un graphe avec les dates,eval=TRUE,echo=FALSE}
+raw_confirmed<- read.csv("https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_confirmed_global.csv", check.names = FALSE)
+confirmed <- raw_confirmed %>%
+  pivot_longer(cols = -c("Country/Region","Province/State","Lat","Long"),
+  names_to = "Date",
+  values_to = "Confirmed") %>% 
+  mutate(Date = mdy(Date))
+options(scipen = 1000000000)
+
+USADateCovid <- confirmed %>% filter( `Country/Region` == "US") %>% 
+select(`Country/Region`,Confirmed,Date)
+
+graphe_date1 <- ggplot(data = USADateCovid, aes(x = Date, y = Confirmed )) + 
+  geom_line ()+
+   labs(title = "Nombre de cas confirmé de la COVID19 aux USA") +
+               xlab("") +
+               ylab("Nombre de cas confirmée")
+ graphe_date1+ theme_stata() + scale_color_stata()
+
+```
+
+### coorélation entre cas confiirmé et morts
+
+```{r,Faire un graphe pour voir si il y a une coorelation entre le nombre de mort et cas confiirmé,warning=FALSE,eval=TRUE, echo=FALSE}
+options(scipen = 1000000000)
+GrapheCovid  <- ggplot(data=UsaCovid, aes(y=Deaths,x=Confirmed))+
+  geom_point(color = "red")+  
+  geom_smooth(method = lm, se = FALSE)+
+labs(title="comparaison entre le nombre de cas confirmé et morts de la COVID19 aux USA")+
+  xlab("Cas confirmé")+
+  ylab("Mort")
+
+GrapheCovid + theme_hc()+ scale_colour_hc()
+
+
+```
+
